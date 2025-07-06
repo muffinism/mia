@@ -8,6 +8,7 @@ Most mobile rhythm games today focus heavily on fast-paced gameplay and flashy v
 - Player rating systems that encourage continuous improvement
 
 3. APP CONCEPT
+
 MIA is a rhythm-based mobile game inspired by Piano Tiles, but designed with a stronger sense of progression, personalization, and competitive features.
 
 Key components include responsive music and beatmap mechanics, addictive gameplay with various note types (normal, hold, and SLAM), Firebase-based login and cloud storage, and immersive visuals using neon glow effects and smooth transitions.
@@ -35,4 +36,5 @@ Key components include responsive music and beatmap mechanics, addictive gamepla
 - Premium Leaderboard Access: Monthly competitions with virtual rewards such as skins or badges
 
 7. WHAT MAKES IT UNIQUE?
+
 MIA encourages long-term engagement by saving player data and allowing performance tracking. Its visually immersive design includes neon glow effects, and its SLAM note mode brings a unique mechanic not found in many similar games. The architecture is also modular, enabling future expansion into PvP battles, custom song uploads, and online community features.
