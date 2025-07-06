@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "602970188098",
+    "project_id": "mia-ureeka",
+    "storage_bucket": "mia-ureeka.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602970188098:android:ed80e9356ebf684a4400db",
+        "android_client_info": {
+          "package_name": "com.example.mia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9OLM7zAaEAytbTzaXfp-F9mf9CZCNsjA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,23 +1,26 @@
 import 'package:flame/components.dart';
-import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
 
-/// The area at the bottom of a lane where notes are meant to be hit.
-class Hitzone extends RectangleComponent {
+class Hitzone extends PositionComponent {
   final int lane;
 
-  Hitzone({required this.lane}) {
-    paint = Paint()..color = Colors.white.withOpacity(0.2);
+  Hitzone({required this.lane});
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+
+    final area = RectangleComponent(
+      size: size,
+      paint: Paint()..color = Colors.transparent,
+      position: Vector2.zero(),
+    );
+
+    add(area);
   }
 
-  /// Triggers a visual feedback effect when the zone is activated.
   void flash() {
-    add(
-      ColorEffect(
-        Colors.white,
-        EffectController(duration: 0.1, reverseDuration: 0.2),
-        opacityTo: 0.8,
-      ),
-    );
+    // Efek visual ketika ditekan (misalnya blink atau animasi)
+    // Optional: tambahkan efek di sini kalau mau
   }
 }
