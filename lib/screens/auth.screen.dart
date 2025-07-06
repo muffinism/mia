@@ -129,42 +129,104 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isLogin ? 'Login' : 'Register')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: InputDecoration(labelText: 'Email'),
-            ),
-            TextField(
-              controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submit,
-              child:
-                  _isLoading
-                      ? CircularProgressIndicator()
-                      : Text(_isLogin ? 'Login' : 'Register'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isLogin = !_isLogin;
-                });
-              },
-              child: Text(
-                _isLogin
-                    ? 'Create an account'
-                    : 'Already have an account? Login',
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF8EE3EF), Color(0xFF6D9EEB)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Circular Icon Placeholder
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.person, size: 64, color: Colors.white),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // Email Field
+                  TextField(
+                    controller: _emailController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      labelStyle: TextStyle(color: Colors.white),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Password Field
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      labelStyle: TextStyle(color: Colors.white),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Sign In Button
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 16),
+                    ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator()
+                        : Text(
+                            _isLogin ? 'Sign in' : 'Register',
+                            style: const TextStyle(color: Color(0xFF6D9EEB), fontSize: 18),
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Bottom Text (e.g. link to switch modes)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _isLogin = !_isLogin;
+                      });
+                    },
+                    child: Text(
+                      _isLogin ? 'Register' : 'Already have an account? Sign in',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
