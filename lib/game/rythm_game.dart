@@ -1,5 +1,3 @@
-import 'dart:ffi';
-
 import 'package:flame/components.dart';
 // import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
@@ -15,6 +13,9 @@ import '../components/slam_ball.dart';
 import '../components/slam_prompt.dart';
 import '../data/beatmap.dart';
 import '../data/slam_side.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
 
 // Represents the current state of the game.
 enum GameState { menu, playing, paused, finished }
@@ -71,6 +72,10 @@ class RythmGame extends FlameGame
   static const double goodWindow = 30.0;
   static const double okWindow = 120.0;
   final ValueNotifier<bool> isHomeScreen = ValueNotifier(true);
+  TextComponent? emailText;
+
+  final VoidCallback? onProfileTap;
+  RythmGame({this.onProfileTap});
   // final VoidCallback onLoginTap;
   // RythmGame({required this.onLoginTap});
 
@@ -155,17 +160,27 @@ class RythmGame extends FlameGame
           loginButton.size.x,
           loginButton.size.y,
         );
+
         if (loginRect.contains(tapPosition.toOffset())) {
           loginButton.scale = Vector2.all(1.2); // efek tap
           Future.delayed(const Duration(milliseconds: 100), () {
-            loginButton.scale = Vector2.all(1.0); // reset
+            if (loginButton.isMounted) {
+              loginButton.scale = Vector2.all(1.0); // reset
+            }
           });
-          debugPrint('Login Tapped');
-          // onLoginTap();
+
+          if (FirebaseAuth.instance.currentUser != null) {
+            debugPrint('Navigating to ProfileScreen...');
+            onProfileTap?.call();
+          } else {
+            debugPrint('User not logged in');
+          }
         } else {
+          // ✅ Start the game on any other tap
           startGame();
         }
         break;
+
       case GameState.playing:
         final pauseRect = pauseIcon.toRect();
         if (pauseRect.contains(tapPosition.toOffset())) {
@@ -269,6 +284,40 @@ class RythmGame extends FlameGame
     add(loginButton);
     add(_titleText!);
     add(tapToStart!);
+
+    // final user = FirebaseAuth.instance.currentUser;
+    // if (user != null) {
+    //   emailText = TextComponent(
+    //     text: user.email ?? '',
+    //     position: Vector2(size.x / 2, loginButton.position.y + 40),
+    //     anchor: Anchor.topCenter,
+    //     textRenderer: TextPaint(
+    //       style: const TextStyle(
+    //         fontSize: 18,
+    //         color: Colors.white,
+    //         fontWeight: FontWeight.w500,
+    //         shadows: [Shadow(blurRadius: 10, color: Colors.black)],
+    //       ),
+    //     ),
+    //   );
+    //   add(emailText!);
+    // }
+
+  //   final highScore = await FirestoreService.getHighScore();
+  //   final highScoreText = TextComponent(
+  //     text: 'High Score: $highScore',
+  //     position: Vector2(size.x / 2, loginButton.position.y + 70),
+  //     anchor: Anchor.topCenter,
+  //     textRenderer: TextPaint(
+  //       style: const TextStyle(
+  //         fontSize: 18,
+  //         color: Colors.white,
+  //         fontWeight: FontWeight.bold,
+  //         shadows: [Shadow(blurRadius: 10, color: Colors.black)],
+  //       ),
+  //     ),
+  //   );
+  //   add(highScoreText);
   }
 
   void removeAllGameComponents() {
@@ -294,6 +343,7 @@ class RythmGame extends FlameGame
 
   void goToMainMenu() {
     isHomeScreen.value = true;
+    // if (emailText != null && emailText!.isMounted) remove(emailText!);
     FlameAudio.bgm.stop();
     removeAllGameComponents();
     if (_perfectHitLine != null && _perfectHitLine!.isMounted)
@@ -315,6 +365,7 @@ class RythmGame extends FlameGame
 
   void startGame() async {
     isHomeScreen.value = false;
+    if (emailText != null && emailText!.isMounted) remove(emailText!);
 
     if (_titleText?.isMounted ?? false) remove(_titleText!);
 
@@ -507,6 +558,18 @@ class RythmGame extends FlameGame
         add(SlamPrompt(side: slamData.side));
         _slamIndex++;
       }
+    }
+
+    if (songPosition >= beatmap.songDuration) {
+      currentState = GameState.finished;
+      FlameAudio.bgm.stop();
+      remove(pauseIcon);
+      add(restartButton!);
+
+      // Save score
+      FirestoreService.saveHighScore(score);
+
+      return;
     }
   }
 
@@ -790,5 +853,18 @@ class PauseOverlay extends PositionComponent {
     if (mainMenuButton?.handleTap(tapPosition) == true) return true;
 
     return false;
+  }
+
+  Future<void> saveHighScore(int newScore) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final doc = await docRef.get();
+
+    final currentHigh = doc.data()?['highScore'] ?? 0;
+    if (newScore > currentHigh) {
+      await docRef.set({'highScore': newScore}, SetOptions(merge: true));
+    }
   }
 }

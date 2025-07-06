@@ -6,6 +6,7 @@ import 'game/rythm_game.dart';
 import 'firebase_options.dart';
 import 'screens/auth.screen.dart';
 import 'package:flame/game.dart';
+import 'screens/profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +38,13 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          final RythmGame game = RythmGame();
+          final RythmGame game = RythmGame(
+            onProfileTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
+          );
 
           return Scaffold(
             body: Stack(
