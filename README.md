@@ -1,7 +1,8 @@
 1. APP NAME
-MIA – Rhythm Game with Progression & Skill Rating
 
-2. PROBLEM STATEMENT
+  MIA – Rhythm Game with Progression & Skill Rating
+
+3. PROBLEM STATEMENT
 Most mobile rhythm games today focus heavily on fast-paced gameplay and flashy visuals. However, they often lack:
 - Player progress tracking and long-term engagement
 - Secure login systems and cloud-based score storage
