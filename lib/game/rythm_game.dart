@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flame/components.dart';
 // import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
@@ -68,6 +70,8 @@ class RythmGame extends FlameGame
   static const double perfectWindow = 10;
   static const double goodWindow = 30.0;
   static const double okWindow = 120.0;
+  final ValueNotifier<bool> isHomeScreen = ValueNotifier(true);
+  late GameOverOverlay gameOverOverlay;
 
   late final Beatmap beatmap;
 
@@ -78,6 +82,10 @@ class RythmGame extends FlameGame
   int _slamIndex = 0;
   int score = 0;
   int combo = 0;
+
+  int totalNotesHit = 0;
+  int totalPerfectHits = 0;
+  int totalMiss = 0;
 
   TextComponent? _scoreText;
   TextComponent? _comboLabel;
@@ -156,6 +164,7 @@ class RythmGame extends FlameGame
             loginButton.scale = Vector2.all(1.0); // reset
           });
           debugPrint('Login Tapped');
+          // onLoginTap();
         } else {
           startGame();
         }
@@ -193,6 +202,7 @@ class RythmGame extends FlameGame
   }
 
   Future<void> showMenu() async {
+    isHomeScreen.value = true;
     currentState = GameState.menu;
 
     _snow =
@@ -286,6 +296,7 @@ class RythmGame extends FlameGame
   }
 
   void goToMainMenu() {
+    isHomeScreen.value = true;
     FlameAudio.bgm.stop();
     removeAllGameComponents();
     if (_perfectHitLine != null && _perfectHitLine!.isMounted)
@@ -299,6 +310,10 @@ class RythmGame extends FlameGame
     _noteIndex = 0;
     _slamIndex = 0;
     songPosition = 0;
+    totalPerfectHits = 0;
+    totalMiss = 0;
+    totalNotesHit = 0;
+
     _hitSlams.clear();
     hitzones.clear();
 
@@ -306,6 +321,8 @@ class RythmGame extends FlameGame
   }
 
   void startGame() async {
+    isHomeScreen.value = false;
+
     if (_titleText?.isMounted ?? false) remove(_titleText!);
 
     if (tapToStart != null && tapToStart!.isMounted) remove(tapToStart!);
@@ -414,17 +431,23 @@ class RythmGame extends FlameGame
   }
 
   void resetGame() {
+    isHomeScreen.value = false;
     FlameAudio.bgm.stop();
     removeAllGameComponents();
     if (_perfectHitLine != null && _perfectHitLine!.isMounted)
       remove(_perfectHitLine!);
     if (pauseOverlay.isMounted) remove(pauseOverlay);
+    if (gameOverOverlay.isMounted) remove(gameOverOverlay);
 
     score = 0;
     combo = 0;
     _noteIndex = 0;
     _slamIndex = 0;
     songPosition = 0;
+    totalPerfectHits = 0;
+    totalMiss = 0;
+    totalNotesHit = 0;
+
     _hitSlams.clear();
     hitzones.clear();
 
@@ -432,6 +455,7 @@ class RythmGame extends FlameGame
   }
 
   void pauseGame() async {
+    isHomeScreen.value = false;
     if (currentState != GameState.playing) return;
 
     FlameAudio.bgm.pause();
@@ -454,6 +478,7 @@ class RythmGame extends FlameGame
   }
 
   void resumeGame() {
+    isHomeScreen.value = false;
     if (currentState != GameState.paused) return;
     FlameAudio.bgm.resume();
     currentState = GameState.playing;
@@ -470,7 +495,8 @@ class RythmGame extends FlameGame
         currentState = GameState.finished;
         FlameAudio.bgm.stop();
         remove(pauseIcon);
-        add(restartButton!);
+
+        showFinalRating();
         return;
       }
 
@@ -617,6 +643,7 @@ class RythmGame extends FlameGame
     switch (text) {
       case "PERFECT":
         color = Colors.yellowAccent;
+        totalPerfectHits++;
         break;
       case "GOOD":
         color = Colors.lightGreenAccent;
@@ -626,6 +653,7 @@ class RythmGame extends FlameGame
         break;
       case "MISS":
         color = Colors.redAccent;
+        totalMiss++;
         break;
       case "SLAM!":
         color = Colors.deepPurpleAccent;
@@ -635,10 +663,12 @@ class RythmGame extends FlameGame
 
     score += points;
 
-    if (text != "MISS")
+    if (text != "MISS") {
       combo++;
-    else
+      totalNotesHit++;
+    } else {
       combo = 0;
+    }
 
     _scoreText?.text = '$score';
     _comboText?.text = '$combo';
@@ -650,6 +680,135 @@ class RythmGame extends FlameGame
     combo = 0;
     _comboText?.text = '$combo';
     judgeHit("MISS", 0);
+  }
+
+  void showFinalRating() async {
+    int totalNotes = beatmap.notes.length;
+    double perfectRate = totalPerfectHits / totalNotes;
+    double accuracy = perfectRate * 100;
+    String rank = "D";
+    Color rankColor = Colors.redAccent;
+
+    if (perfectRate >= 0.9 && totalMiss == 0) {
+      rank = "S";
+      rankColor = Colors.yellowAccent;
+    } else if (perfectRate >= 0.8 && totalMiss == 0 || perfectRate >= 0.9) {
+      rank = "A";
+      rankColor = Colors.greenAccent;
+    } else if (perfectRate >= 0.7 && totalMiss == 0 || perfectRate >= 0.8) {
+      rank = "B";
+      rankColor = Colors.lightBlueAccent;
+    } else if (perfectRate >= 0.6) {
+      rank = "C";
+      rankColor = Colors.orangeAccent;
+    }
+
+    final centerX = size.x / 2;
+    final centerY = size.y / 2;
+
+    final ratingText = TextComponent(
+      text: 'Rating: $rank',
+      position: Vector2(centerX, centerY - 60),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: TextStyle(
+          fontSize: 48,
+          fontWeight: FontWeight.bold,
+          color: rankColor,
+          shadows: [Shadow(blurRadius: 12, color: rankColor.withOpacity(0.8))],
+        ),
+      ),
+    );
+
+    final scoreText = TextComponent(
+      text: 'Score: $score',
+      position: Vector2(centerX, centerY - 10),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: TextStyle(fontSize: 24, color: Colors.white),
+      ),
+    );
+
+    final accuracyText = TextComponent(
+      text: 'Accuracy: ${accuracy.toStringAsFixed(1)}%',
+      position: Vector2(centerX, centerY + 25),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: TextStyle(fontSize: 24, color: Colors.white),
+      ),
+    );
+
+    final restartButton = IconButtonComponent(
+      sprite: await Sprite.load('restart.png'),
+      position: Vector2(centerX, centerY + 80),
+      onPressed: resetGame,
+    );
+
+    addAll([ratingText, scoreText, accuracyText, restartButton]);
+  }
+}
+
+class GameOverOverlay extends PositionComponent {
+  final String rank;
+  final VoidCallback onRestart;
+
+  GameOverOverlay({required this.rank, required this.onRestart});
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+
+    final background = RectangleComponent(
+      size: size,
+      paint: Paint()..color = Colors.black.withOpacity(0.9),
+    );
+
+    final rankColor = getRankColor(rank);
+
+    final rankText = TextComponent(
+      text: 'Your Rank: $rank',
+      position: Vector2(size.x / 2, size.y / 2 - 40),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: TextStyle(
+          fontSize: 36,
+          fontWeight: FontWeight.bold,
+          color: rankColor,
+          shadows: [
+            Shadow(
+              color: rankColor.withOpacity(0.7),
+              blurRadius: 12,
+              offset: Offset(0, 0),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final restartButton = IconButtonComponent(
+      sprite: await Sprite.load('restart.png'),
+      position: Vector2(size.x / 2, size.y / 2),
+      onPressed: onRestart,
+    );
+
+    addAll([background, rankText, restartButton]);
+  }
+
+  Color getRankColor(String rank) {
+    switch (rank) {
+      case "S":
+        return Colors.amberAccent;
+      case "A":
+        return Colors.lightGreenAccent;
+      case "B":
+        return Colors.lightBlueAccent;
+      case "C":
+        return Colors.orangeAccent;
+      case "D":
+        return Colors.redAccent;
+      default:
+        return Colors.white;
+    }
   }
 }
 
