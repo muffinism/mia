@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flame/components.dart';
 // import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
@@ -5,6 +7,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flame_audio/flame_audio.dart';
+import 'package:mia/components/snow_component.dart';
 
 import '../components/hitzone.dart';
 import '../components/note_component.dart';
@@ -47,40 +50,64 @@ class GameButton extends PositionComponent {
   }
 }
 
+class PauseButton extends SpriteComponent with TapCallbacks {
+  final VoidCallback onPressed;
+
+  PauseButton({required this.onPressed});
+
+  @override
+  void onTapDown(TapDownEvent event) {
+    debugPrint('Pause button tapped');
+    onPressed();
+  }
+}
+
 class RythmGame extends FlameGame
-    with KeyboardEvents, HasCollisionDetection, TapDetector {
+    with KeyboardEvents, HasCollisionDetection, MultiTouchTapDetector {
   static const int numberOfLanes = 4;
   static const double scrollSpeed = 600;
   static const double noteHeight = 100;
-  static const double perfectWindow = 0.05;
-  static const double goodWindow = 0.1;
-  static const double okWindow = 0.15;
+  static const double perfectWindow = 10;
+  static const double goodWindow = 30.0;
+  static const double okWindow = 120.0;
+  final ValueNotifier<bool> isHomeScreen = ValueNotifier(true);
+  // final VoidCallback onLoginTap;
+  // RythmGame({required this.onLoginTap});
 
   late final Beatmap beatmap;
-  
+
   // Audio-based timing
   double songPosition = 0;
-  
+
   int _noteIndex = 0;
   int _slamIndex = 0;
   int score = 0;
   int combo = 0;
 
   TextComponent? _scoreText;
+  TextComponent? _comboLabel;
   TextComponent? _comboText;
   TextComponent? _judgmentText;
   TextComponent? _titleText;
+  TextComponent? tapToStart;
 
   final List<Hitzone> hitzones = [];
   final List<SlamNote> _hitSlams = [];
 
   GameState currentState = GameState.menu;
 
-  late final GameButton playButton;
-  late final GameButton pauseButton;
-  late final GameButton resumeButton;
-  late final GameButton restartButton;
-  late final GameButton mainMenuButton;
+  late PauseButton pauseIcon;
+  IconButtonComponent? resumeButton;
+  IconButtonComponent? restartButton;
+  IconButtonComponent? mainMenuButton;
+  late SpriteComponent loginButton;
+  late SpriteComponent _backgroundMenu;
+  SnowComponent? _snow;
+  RectangleComponent? _blurOverlay;
+  late PauseOverlay pauseOverlay;
+  RectangleComponent? _perfectHitLine;
+
+  SpriteComponent? _gameBackground;
 
   TimerComponent? _judgmentTimer;
 
@@ -88,10 +115,10 @@ class RythmGame extends FlameGame
   Future<void> onLoad() async {
     await super.onLoad();
     beatmap = Beatmap.sample();
-    
+
     // Listen for song position changes to sync the game
     FlameAudio.bgm.audioPlayer.onPositionChanged.listen((p) {
-        songPosition = p.inMilliseconds / 1000.0;
+      songPosition = p.inMilliseconds / 1000.0;
     });
 
     _titleText = TextComponent(
@@ -103,114 +130,178 @@ class RythmGame extends FlameGame
       ),
     );
 
-    playButton = GameButton(
-      onPressed: startGame,
-      text: 'Play',
-      position: Vector2(size.x / 2, size.y / 2),
-    );
+    pauseIcon =
+        PauseButton(onPressed: pauseGame)
+          ..sprite = await loadSprite('pause_icon.png')
+          ..size = Vector2(40, 40)
+          ..position = Vector2(size.x - 20, 50)
+          ..anchor = Anchor.topRight
+          ..priority = 1000;
 
-    pauseButton = GameButton(
-      onPressed: pauseGame,
-      text: 'Pause',
-      color: Colors.grey,
-      position: Vector2(size.x - 110, 115),
-    );
-
-    resumeButton = GameButton(
-      onPressed: resumeGame,
-      text: 'Resume',
-      color: Colors.green,
-      position: Vector2(size.x / 2, size.y / 2 - 60),
-    );
-    
-    restartButton = GameButton(
-      onPressed: resetGame,
-      text: 'Restart',
-      position: Vector2(size.x / 2, size.y / 2),
-    );
-    
-    mainMenuButton = GameButton(
-        onPressed: goToMainMenu,
-        text: 'Main Menu',
-        color: Colors.amber,
-        position: Vector2(size.x / 2, size.y / 2 + 60));
-
-    showMenu();
+    await showMenu();
   }
-  
+
   @override
-  void onTapUp(TapUpInfo info) {
-    super.onTapUp(info);
-    
+  void onTapDown(int pointerId, TapDownInfo info) {
+    super.onTapDown(pointerId, info);
+
     final tapPosition = info.eventPosition.global;
 
     switch (currentState) {
       case GameState.menu:
-        if (playButton.isMounted && playButton.containsPoint(tapPosition)) {
-          playButton.onPressed();
+        final loginRect = Rect.fromLTWH(
+          loginButton.position.x - loginButton.size.x / 2,
+          loginButton.position.y - loginButton.size.y / 2,
+          loginButton.size.x,
+          loginButton.size.y,
+        );
+        if (loginRect.contains(tapPosition.toOffset())) {
+          loginButton.scale = Vector2.all(1.2); // efek tap
+          Future.delayed(const Duration(milliseconds: 100), () {
+            loginButton.scale = Vector2.all(1.0); // reset
+          });
+          debugPrint('Login Tapped');
+          // onLoginTap();
+        } else {
+          startGame();
         }
         break;
       case GameState.playing:
-        if (pauseButton.isMounted && pauseButton.containsPoint(tapPosition)) {
-          pauseButton.onPressed();
-        } else {
-          final laneWidth = size.x / numberOfLanes;
-          for (int i = 0; i < numberOfLanes; i++) {
-            final laneRect = Rect.fromLTWH(i * laneWidth, 0, laneWidth, size.y);
-            if (laneRect.contains(tapPosition.toOffset())) {
-              onTapLane(i);
-              break; 
-            }
+        final pauseRect = pauseIcon.toRect();
+        if (pauseRect.contains(tapPosition.toOffset())) {
+          pauseGame();
+          return;
+        }
+
+        final laneWidth = size.x / numberOfLanes;
+        for (int i = 0; i < numberOfLanes; i++) {
+          final laneRect = Rect.fromLTWH(i * laneWidth, 0, laneWidth, size.y);
+          if (laneRect.contains(tapPosition.toOffset())) {
+            onTapLane(i);
+            break;
           }
         }
         break;
       case GameState.paused:
-        if (resumeButton.isMounted && resumeButton.containsPoint(tapPosition)) {
-          resumeButton.onPressed();
-        }
-        if (restartButton.isMounted && restartButton.containsPoint(tapPosition)) {
-          restartButton.onPressed();
-        }
-        if (mainMenuButton.isMounted && mainMenuButton.containsPoint(tapPosition)) {
-          mainMenuButton.onPressed();
+        if (pauseOverlay.isReady) {
+          if (pauseOverlay.handleTap(tapPosition)) return;
+        } else {
+          print('PauseOverlay tap ignored, not ready');
         }
         break;
       case GameState.finished:
-        if (restartButton.isMounted && restartButton.containsPoint(tapPosition)) {
-          restartButton.onPressed();
+        if (restartButton!.isMounted &&
+            restartButton!.containsPoint(tapPosition)) {
+          restartButton!.onPressed();
         }
         break;
     }
   }
 
-
-  void showMenu() {
+  Future<void> showMenu() async {
+    isHomeScreen.value = true;
     currentState = GameState.menu;
+
+    _snow =
+        SnowComponent()
+          ..size = size
+          ..priority = -1;
+
+    _backgroundMenu =
+        SpriteComponent()
+          ..sprite = await loadSprite('bg_menu.jpg')
+          ..size = size
+          ..priority = -2;
+
+    add(_backgroundMenu);
+
+    // Tambahan: Layer hitam transparan & blur
+    _blurOverlay = RectangleComponent(
+      size: size,
+      paint: Paint()..color = const Color(0xCC000000), // semi-transparan hitam
+    )..priority = -1;
+
+    _titleText = TextComponent(
+      text: '[ M I A ]',
+      position: Vector2(size.x / 2, size.y / 3),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          fontSize: 48,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          shadows: [
+            Shadow(blurRadius: 10, color: Colors.blueAccent),
+            Shadow(blurRadius: 30, color: Colors.purple),
+          ],
+        ),
+      ),
+    );
+
+    tapToStart = TextComponent(
+      text: 'Touch to Start',
+      position: Vector2(size.x / 2, size.y / 2),
+      anchor: Anchor.center,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          shadows: [
+            Shadow(blurRadius: 10, color: Colors.white),
+            Shadow(blurRadius: 30, color: Colors.purple),
+          ],
+        ),
+      ),
+    )..priority = -1;
+
+    loginButton =
+        SpriteComponent()
+          ..sprite = await loadSprite('icon_person.png')
+          ..size = Vector2(40, 40)
+          ..anchor = Anchor.center
+          ..position = Vector2(size.x / 2, size.y / 2 + 60)
+          ..priority = 0;
+
+    add(_backgroundMenu);
+    add(_blurOverlay!);
+    add(_snow!);
+    add(loginButton);
     add(_titleText!);
-    add(playButton);
+    add(tapToStart!);
   }
-  
+
   void removeAllGameComponents() {
-    final componentsToRemove = children.where((c) => 
-        c is NoteComponent || 
-        c is SlamPrompt || 
-        c is Hitzone || 
-        c is SlamBall ||
-        c == _scoreText ||
-        c == _comboText ||
-        c == _judgmentText ||
-        c == pauseButton ||
-        c == resumeButton ||
-        c == restartButton ||
-        c == mainMenuButton
-    ).toList();
+    final componentsToRemove =
+        children
+            .where(
+              (c) =>
+                  c is NoteComponent ||
+                  c is SlamPrompt ||
+                  c is Hitzone ||
+                  c is SlamBall ||
+                  c == _scoreText ||
+                  c == _comboLabel ||
+                  c == _comboText ||
+                  c == _judgmentText ||
+                  c == resumeButton ||
+                  c == restartButton ||
+                  c == mainMenuButton,
+            )
+            .toList();
     removeAll(componentsToRemove);
   }
-  
+
   void goToMainMenu() {
+    isHomeScreen.value = true;
     FlameAudio.bgm.stop();
     removeAllGameComponents();
-    
+    if (_perfectHitLine != null && _perfectHitLine!.isMounted)
+      remove(_perfectHitLine!);
+    if (pauseOverlay.isMounted) remove(pauseOverlay);
+    if (_gameBackground != null && _gameBackground!.isMounted)
+      remove(_gameBackground!);
+
     score = 0;
     combo = 0;
     _noteIndex = 0;
@@ -218,51 +309,127 @@ class RythmGame extends FlameGame
     songPosition = 0;
     _hitSlams.clear();
     hitzones.clear();
-    
+
     showMenu();
   }
 
-
   void startGame() async {
+    isHomeScreen.value = false;
+
     if (_titleText?.isMounted ?? false) remove(_titleText!);
-    if (playButton.isMounted) remove(playButton);
+
+    if (tapToStart != null && tapToStart!.isMounted) remove(tapToStart!);
+
+    if (loginButton.isMounted) remove(loginButton);
+
+    if (_backgroundMenu != null && _backgroundMenu!.isMounted)
+      remove(_backgroundMenu!);
+
+    if (_snow != null && _snow!.isMounted) remove(_snow!);
+
+    if (_blurOverlay != null && _blurOverlay!.isMounted) remove(_blurOverlay!);
+
+    _gameBackground =
+        SpriteComponent()
+          ..sprite = await loadSprite('bg_game_blur.jpg')
+          ..size = size
+          ..priority = -3;
+
+    add(_gameBackground!);
+
+    _perfectHitLine = RectangleComponent(
+      size: Vector2(size.x, 2),
+      paint: Paint()..color = Colors.white.withOpacity(0.8),
+      position: Vector2(0, size.y - 120),
+    );
+    add(_perfectHitLine!);
 
     final laneWidth = size.x / numberOfLanes;
     for (int i = 0; i < numberOfLanes; i++) {
-      final hitzone = Hitzone(lane: i)
-        ..size = Vector2(laneWidth, noteHeight)
-        ..position = Vector2(i * laneWidth, size.y - noteHeight);
+      final hitzone =
+          Hitzone(lane: i)
+            ..size = Vector2(laneWidth, 240)
+            ..position = Vector2(i * laneWidth, size.y - 240);
       hitzones.add(hitzone);
       add(hitzone);
     }
 
-    final slamBall = SlamBall()
-      ..anchor = Anchor.center
-      ..position = Vector2(size.x / 2, size.y - noteHeight - 80);
+    final slamBall =
+        SlamBall()
+          ..anchor = Anchor.center
+          ..position = Vector2(size.x / 2, size.y - noteHeight - 120);
     add(slamBall);
 
-    _scoreText = TextComponent(text: 'Score: 0', position: Vector2(20, 100));
-    _comboText = TextComponent(text: 'Combo: 0', position: Vector2(20, 130));
+    _scoreText = TextComponent(
+      text: '0',
+      position: Vector2(20, 50),
+      anchor: Anchor.topLeft,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          fontSize: 20,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+
+    _comboLabel = TextComponent(
+      text: 'COMBO',
+      position: Vector2(size.x / 2, 50),
+      anchor: Anchor.topCenter,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          fontSize: 16,
+          color: Colors.white70,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+
+    _comboText = TextComponent(
+      text: '0',
+      position: Vector2(size.x / 2, 75),
+      anchor: Anchor.topCenter,
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          fontSize: 24,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+
     _judgmentText = TextComponent(
       text: '',
-      position: Vector2(size.x / 2, size.y / 2),
-      anchor: Anchor.center,
+      position: Vector2(size.x / 2, 120),
+      anchor: Anchor.topCenter,
       textRenderer: TextPaint(
-        style: const TextStyle(fontSize: 48, color: Colors.white, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          fontSize: 36,
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
     add(_scoreText!);
+    add(_comboLabel!);
     add(_comboText!);
     add(_judgmentText!);
-    add(pauseButton);
-    
-    await FlameAudio.bgm.play('tetris.mp3'); // Assumes your song is named tetris.mp3
+    add(pauseIcon);
+
+    await FlameAudio.bgm.play(
+      'tetris.mp3',
+    ); // Assumes your song is named tetris.mp3
     currentState = GameState.playing;
   }
 
   void resetGame() {
+    isHomeScreen.value = false;
     FlameAudio.bgm.stop();
     removeAllGameComponents();
+    if (_perfectHitLine != null && _perfectHitLine!.isMounted)
+      remove(_perfectHitLine!);
+    if (pauseOverlay.isMounted) remove(pauseOverlay);
 
     score = 0;
     combo = 0;
@@ -271,28 +438,40 @@ class RythmGame extends FlameGame
     songPosition = 0;
     _hitSlams.clear();
     hitzones.clear();
-    
+
     startGame();
   }
 
-  void pauseGame() {
+  void pauseGame() async {
+    isHomeScreen.value = false;
     if (currentState != GameState.playing) return;
+
     FlameAudio.bgm.pause();
     currentState = GameState.paused;
-    remove(pauseButton);
-    add(resumeButton);
-    add(restartButton);
-    add(mainMenuButton);
+
+    remove(pauseIcon);
+
+    pauseOverlay =
+        PauseOverlay(
+            onResume: resumeGame,
+            onRestart: resetGame,
+            onMainMenu: goToMainMenu,
+          )
+          ..size = size
+          ..priority = 50;
+
+    add(pauseOverlay);
+    await pauseOverlay.onLoad();
+    print('PauseOverlay fully loaded and ready');
   }
 
   void resumeGame() {
+    isHomeScreen.value = false;
     if (currentState != GameState.paused) return;
     FlameAudio.bgm.resume();
     currentState = GameState.playing;
-    remove(resumeButton);
-    remove(restartButton);
-    remove(mainMenuButton);
-    add(pauseButton);
+    if (pauseOverlay.isMounted) remove(pauseOverlay);
+    add(pauseIcon);
   }
 
   @override
@@ -303,14 +482,15 @@ class RythmGame extends FlameGame
       if (songPosition >= beatmap.songDuration) {
         currentState = GameState.finished;
         FlameAudio.bgm.stop();
-        remove(pauseButton);
-        add(restartButton);
+        remove(pauseIcon);
+        add(restartButton!);
         return;
       }
 
       // Spawn notes based on the song's current position
       while (_noteIndex < beatmap.notes.length &&
-          beatmap.notes[_noteIndex].time <= songPosition + (size.y / scrollSpeed)) {
+          beatmap.notes[_noteIndex].time <=
+              songPosition + (size.y / scrollSpeed)) {
         final noteData = beatmap.notes[_noteIndex];
         final laneWidth = size.x / numberOfLanes;
         add(
@@ -331,7 +511,10 @@ class RythmGame extends FlameGame
   }
 
   @override
-  KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+  KeyEventResult onKeyEvent(
+    KeyEvent event,
+    Set<LogicalKeyboardKey> keysPressed,
+  ) {
     if (currentState != GameState.playing) return KeyEventResult.ignored;
 
     if (event is KeyDownEvent) {
@@ -356,30 +539,32 @@ class RythmGame extends FlameGame
     if (currentState != GameState.playing) return;
     hitzones[lane].flash();
 
-    final hitTime = songPosition; // Judge based on song position
     NoteComponent? closestNote;
-    double minTimeDiff = double.infinity;
+    double minDistance = double.infinity;
+
+    final hitzoneY = size.y - 120;
+    final maxDistance = 120;
 
     for (final note in children.whereType<NoteComponent>()) {
       if (note.note.lane == lane) {
-        final timeDiff = (note.note.time - hitTime).abs();
-        final yPos = note.position.y;
-        if (timeDiff < minTimeDiff && yPos > size.y - noteHeight * 2 && yPos < size.y) {
-          minTimeDiff = timeDiff;
+        final distance = (note.position.y - hitzoneY).abs();
+
+        if (distance < minDistance && distance <= maxDistance) {
+          minDistance = distance;
           closestNote = note;
         }
       }
     }
 
     if (closestNote != null) {
-      if (minTimeDiff <= perfectWindow) {
-        judgeHit("Perfect", 100);
-      } else if (minTimeDiff <= goodWindow) {
-        judgeHit("Good", 50);
-      } else if (minTimeDiff <= okWindow) {
+      if (minDistance <= perfectWindow) {
+        judgeHit("PERFECT", 100);
+      } else if (minDistance <= goodWindow) {
+        judgeHit("GOOD", 50);
+      } else if (minDistance <= okWindow) {
         judgeHit("OK", 20);
       } else {
-        return;
+        judgeHit("MISS", 0);
       }
       closestNote.removeFromParent();
     }
@@ -407,8 +592,25 @@ class RythmGame extends FlameGame
     }
   }
 
-  void showJudgmentText(String text) {
-    _judgmentText?.text = text;
+  void showJudgmentText(String text, Color color) {
+    _judgmentText
+      ?..text = text
+      ..textRenderer = TextPaint(
+        style: TextStyle(
+          fontSize: 48,
+          fontWeight: FontWeight.bold,
+          color: color,
+          shadows: [
+            Shadow(
+              color: color.withOpacity(0.7),
+              blurRadius: 12,
+              offset: Offset(0, 0),
+            ),
+            Shadow(color: color, blurRadius: 24, offset: Offset(0, 0)),
+          ],
+        ),
+      );
+
     _judgmentTimer?.removeFromParent();
     _judgmentTimer = TimerComponent(
       period: 0.5,
@@ -423,17 +625,170 @@ class RythmGame extends FlameGame
   }
 
   void judgeHit(String text, int points) {
+    Color color;
+
+    switch (text) {
+      case "PERFECT":
+        color = Colors.yellowAccent;
+        break;
+      case "GOOD":
+        color = Colors.lightGreenAccent;
+        break;
+      case "OK":
+        color = Colors.lightBlueAccent;
+        break;
+      case "MISS":
+        color = Colors.redAccent;
+        break;
+      case "SLAM!":
+        color = Colors.deepPurpleAccent;
+      default:
+        color = Colors.white;
+    }
+
     score += points;
-    combo++;
-    _scoreText?.text = 'Score: $score';
-    _comboText?.text = 'Combo: $combo';
-    showJudgmentText(text);
+
+    if (text != "MISS")
+      combo++;
+    else
+      combo = 0;
+
+    _scoreText?.text = '$score';
+    _comboText?.text = '$combo';
+    showJudgmentText(text, color);
   }
 
   void onNoteMissed() {
     if (currentState != GameState.playing) return;
     combo = 0;
-    _comboText?.text = 'Combo: $combo';
-    showJudgmentText("Miss");
+    _comboText?.text = '$combo';
+    judgeHit("MISS", 0);
+  }
+}
+
+class IconButtonComponent extends PositionComponent {
+  final VoidCallback onPressed;
+  final Sprite sprite;
+
+  IconButtonComponent({
+    required this.onPressed,
+    required this.sprite,
+    required Vector2 position,
+  }) {
+    this.position = position;
+    size = Vector2(25, 25);
+    anchor = Anchor.center;
+  }
+
+  @override
+  Future<void> onLoad() async {
+    super.onLoad();
+    final spriteComponent = SpriteComponent(
+      sprite: sprite,
+      size: size,
+      anchor: Anchor.center,
+      position: size / 2,
+    );
+
+    add(spriteComponent);
+  }
+
+  bool handleTap(Vector2 tapPosition) {
+    final topLeft = absoluteTopLeftPosition;
+    final rect = Rect.fromLTWH(topLeft.x, topLeft.y, size.x, size.y);
+    if (rect.contains(tapPosition.toOffset())) {
+      debugPrint('Tapped on button at $position');
+      onPressed();
+      return true;
+    }
+    return false;
+  }
+}
+
+// class IconButtonComponent extends SpriteComponent with TapCallbacks {
+//   final VoidCallback onPressed;
+
+//   IconButtonComponent({
+//     required this.onPressed,
+//     required Sprite sprite,
+//     required Vector2 position,
+//   }) {
+//     this.sprite = sprite;
+//     this.size = Vector2(25, 25);
+//     this.position = position;
+//     anchor = Anchor.center;
+//   }
+
+//   @override
+//   void onTapDown(TapDownEvent event) {
+//     onPressed();
+//   }
+// }
+
+class PauseOverlay extends PositionComponent {
+  final VoidCallback onResume;
+  final VoidCallback onRestart;
+  final VoidCallback onMainMenu;
+
+  late IconButtonComponent resumeButton;
+  late IconButtonComponent restartButton;
+  late IconButtonComponent mainMenuButton;
+
+  PauseOverlay({
+    required this.onResume,
+    required this.onRestart,
+    required this.onMainMenu,
+  });
+
+  bool isReady = false;
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    print('PauseOverlay onLoad started');
+
+    final background = RectangleComponent(
+      size: size,
+      paint: Paint()..color = Colors.black.withOpacity(0.8),
+    );
+
+    add(background);
+
+    final spacing = 80.0;
+    final centerX = size.x / 2;
+    final yPos = size.y / 2;
+
+    mainMenuButton = IconButtonComponent(
+      sprite: await Sprite.load('main_menu.png'),
+      position: Vector2(centerX - spacing, yPos),
+      onPressed: onMainMenu,
+    );
+
+    restartButton = IconButtonComponent(
+      sprite: await Sprite.load('restart.png'),
+      position: Vector2(centerX, yPos),
+      onPressed: onRestart,
+    );
+
+    resumeButton = IconButtonComponent(
+      sprite: await Sprite.load('resume.png'),
+      position: Vector2(centerX + spacing, yPos),
+      onPressed: onResume,
+    );
+
+    addAll([mainMenuButton, restartButton, resumeButton]);
+
+    isReady = true;
+    print('PauseOverlay onLoad finished - buttons initialized');
+  }
+
+  bool handleTap(Vector2 tapPosition) {
+    if (!isReady) return false;
+
+    if (resumeButton?.handleTap(tapPosition) == true) return true;
+    if (restartButton?.handleTap(tapPosition) == true) return true;
+    if (mainMenuButton?.handleTap(tapPosition) == true) return true;
+
+    return false;
   }
 }

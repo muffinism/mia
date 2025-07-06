@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '/services/auth.services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../main.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -37,9 +38,7 @@ class _AuthScreenState extends State<AuthScreen> {
         user = await _authService.login(email, password);
 
         if (user != null && !user.emailVerified) {
-          // Logout jika belum verifikasi
           await _authService.logout();
-
           if (!mounted) return;
           _showErrorDialog(
             'Login Failed',
@@ -47,7 +46,17 @@ class _AuthScreenState extends State<AuthScreen> {
           );
           return;
         }
-      } else {
+
+        if (user != null && user.emailVerified) {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => AuthGate()),
+          );
+          return;
+        }
+      }
+
+      else {
         user = await _authService.register(email, password);
 
         await user?.sendEmailVerification();
@@ -153,7 +162,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       color: Colors.white.withOpacity(0.3),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.person, size: 64, color: Colors.white),
+                    child: const Icon(
+                      Icons.person,
+                      size: 64,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 40),
 
@@ -200,14 +213,21 @@ class _AuthScreenState extends State<AuthScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 50,
+                        vertical: 16,
+                      ),
                     ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator()
-                        : Text(
-                            _isLogin ? 'Sign in' : 'Register',
-                            style: const TextStyle(color: Color(0xFF6D9EEB), fontSize: 18),
-                          ),
+                    child:
+                        _isLoading
+                            ? const CircularProgressIndicator()
+                            : Text(
+                              _isLogin ? 'Sign in' : 'Register',
+                              style: const TextStyle(
+                                color: Color(0xFF6D9EEB),
+                                fontSize: 18,
+                              ),
+                            ),
                   ),
                   const SizedBox(height: 12),
 
@@ -219,7 +239,9 @@ class _AuthScreenState extends State<AuthScreen> {
                       });
                     },
                     child: Text(
-                      _isLogin ? 'Register' : 'Already have an account? Sign in',
+                      _isLogin
+                          ? 'Register'
+                          : 'Already have an account? Sign in',
                       style: const TextStyle(color: Colors.white70),
                     ),
                   ),
